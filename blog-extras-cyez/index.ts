@@ -17,15 +17,33 @@ export async function apply(ctx: Context) {
             }
 
             const BlogModel = global.Hydro.model.blog;
+            
+            // In hydrooj v4.19, h.ctx.db.paginate is unavailable, 
+            // we need to import paginate
+            // 动态选择 paginate 函数
+            let paginateFunc;
+            if (h.ctx?.db?.paginate) {
+                // 新版本
+                paginateFunc = h.ctx.db.paginate;
+            } else {
+                // 老版本：尝试通过 require 获取
+                try {
+                    const hydrooj = require('hydrooj');
+                    paginateFunc = hydrooj.paginate;
+                } catch (e) {
+                    console.warn('Failed to require paginate from hydrooj:', e.message);
+                    throw new Error('No paginate function available');
+                }
+            }
 
             // 获取博客数据
-            const [ddocs, ] = await h.ctx.db.paginate(
+            const [ddocs, ] = await paginateFunc(
                 BlogModel.getMulti({ owner: parseInt(uid) }),
                 1,  // 第一页
                 10, // 每页10篇
             );
 
-            const [, blogcnt] = await h.ctx.db.paginate(
+            const [, blogcnt] = await paginateFunc(
                 BlogModel.getMulti({ owner: parseInt(uid) }),
                 1,  // 第一页
                 1, // 每页1篇用于获取总数
