@@ -1,0 +1,84 @@
+{% if blog_info and blog_info.available %}
+<li class="section__tab-item">
+  <h1 class="section__tab-title">{{ _('Recent Blogs') }}</h1>
+  <div class="section__tab-main">
+    <div class="section__body typo">
+
+      
+      {% if blog_info.error %}
+      <!-- 错误状态 -->
+      <div class="section__body">
+        <div class="text-center">
+          <div class="supplementary" style="color: #fb5555;">
+            <span class="icon icon-close"></span>
+            {{ _('Failed to load blog data, please try again later') }}
+          </div>
+        </div>
+      </div>
+      
+      {# This will never be triggered though #}
+      {% elif not blog_info.available %}
+      <!-- 博客插件不可用 -->
+      <div class="section__body">
+        <div class="text-center">
+          <div class="supplementary">
+            <span class="icon icon-info"></span>
+            {{ _('Blog feature is not available') }}
+          </div>
+        </div>
+      </div>
+
+      {% elif blog_info.ddocs and blog_info.ddocs.length > 0 %}
+
+      <!-- 博客文章列表 -->
+      {% for ddoc in blog_info.ddocs %}
+      <div class="section__list__item">
+        <div class="media">
+          <div class="media__left">
+            <div class="discussion__replies numbox">
+              <div class="numbox__num large">{{ datetimeSpan(ddoc._id, false, 'D')|safe }}</div>
+              <div class="numbox__text">{{ datetimeSpan(ddoc._id, false, 'YYYY-M')|safe }}</div>
+            </div>
+          </div>
+          <div class="media__body">
+            <div class="discussion__title">
+              <a href="{{ url('blog_detail', uid=udoc._id, did=ddoc._id) }}" class="link" target="_blank">
+                {{ ddoc.title }}
+              </a>
+            </div>
+            <div class="supplementary list">
+              <span>{{ _('{0} views').format(ddoc.views) }}</span>
+              <span>{{ datetimeSpan(ddoc.updateAt)|safe }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+
+      <!-- 查看更多 -->
+      <div class="section__footer">
+        <a href="{{ url('blog_main', uid=udoc._id) }}" class="button expanded" target="_blank">
+          {{ _('View All Blogs ({0})').format(blog_info.totalPosts) }}
+        </a>
+      </div>
+
+      {% else %}
+      <!-- 空状态 -->
+      <div class="section__body">
+        <div class="text-center">
+          <div class="supplementary">{{ _('This user hasn\'t published any blog posts yet') }}</div>
+          {% if isSelfProfile %}
+          <div style="margin-top: 1rem;">
+            <a href="{{ url('blog_create', uid=udoc._id) }}" class="button">
+              {{ _('Create Your First Post') }}
+            </a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</li>
+{% endif %}

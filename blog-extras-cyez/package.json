@@ -1,0 +1,10 @@
+{
+  "name": "blog-extras-cyez",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "author": {
+    "name": "zzsqjdhqgb",
+    "url": "https://github.com/zzsqjdhqgb"
+  },
+  "license": "AGPL-3.0"
+}
