@@ -24,7 +24,7 @@ export async function apply(ctx: Context) {
             let paginateFunc;
             if (h.ctx?.db?.paginate) {
                 // 新版本
-                paginateFunc = h.ctx.db.paginate;
+                paginateFunc = (...args) => h.ctx.db.paginate(...args);
             } else {
                 // 老版本：尝试通过 require 获取
                 try {
