@@ -1,0 +1,9 @@
+{
+    "name": "restore-img",
+    "version": "0.0.1",
+    "repository": "",
+    "license": "",
+    "devDependencies": {
+        "hydrooj": "^5.0.0-beta.7"
+    }
+}
