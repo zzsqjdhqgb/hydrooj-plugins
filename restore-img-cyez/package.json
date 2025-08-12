@@ -1,8 +1,11 @@
 {
     "name": "restore-img",
     "version": "0.0.1",
-    "repository": "",
-    "license": "",
+    "author": {
+        "name": "zzsqjdhqgb",
+        "url": "https://github.com/zzsqjdhqgb"
+    },
+    "license": "AGPL-3.0",
     "devDependencies": {
         "hydrooj": "^5.0.0-beta.7"
     }
