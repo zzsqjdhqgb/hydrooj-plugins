@@ -52,12 +52,7 @@ export async function processMarkdownImages(
 
     // 按位置倒序排序，以进行安全的字符串替换
     patches.sort((a, b) => {
-        if (!a.node.position || !b.node.position) {
-            // 如果某个节点没有位置信息，我们认为它们相等，不改变顺序
-            return 0;
-        } else {
-            return b.node.position!.start.offset - a.node.position!.start.offset
-        }
+        return b.node.position!.start.offset - a.node.position!.start.offset
     });
 
     // 从后往前应用补丁

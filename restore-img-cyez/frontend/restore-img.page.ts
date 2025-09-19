@@ -1,6 +1,6 @@
 import { $, addPage, AutoloadPage } from '@hydrooj/ui-default';
 import { processMarkdownImages } from "../module/parser.ts"
-import { BADHINTS } from 'dns';
+import { MainReplacer } from "../module/url-replacer.ts"
 
 
 const customEditorPage = new AutoloadPage('customEditor', () => {
@@ -65,8 +65,10 @@ function editorHandler(editor_instance): void {
     });
 
     async function mdStringProcesser(mdstring: string): Promise<string> {
-        // TODO
-        return mdstring + "\n\n484858";
+        blockUI();
+        const replaced_mdstring = await processMarkdownImages(mdstring, MainReplacer);
+        unblockUI();
+        return replaced_mdstring;
     }
 
     function blockUI() {
