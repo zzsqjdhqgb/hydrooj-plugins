@@ -1,6 +1,6 @@
 import { UrlReplacer } from "./parser";
 import { getProxyUrl, createDownloadProcess, showError } from "./user-interact";
-import mime from 'mime-types';
+import uploadFiles from '@hydrooj/ui-default';
 
 export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[]> => {
     let userProxy: string | null = null;
@@ -10,7 +10,7 @@ export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[
     let current_percent = 0;
     const total = urls.length;
 
-    function downloadImagesViaProxy(originalUrl: string, proxyUrlTemplate: string): Promise<Blob | null> {
+    function downloadImagesViaProxy(originalUrl: string, proxyUrlTemplate: string): Promise<Blob> {
         // 2. 对原始URL进行编码，以安全地将其作为另一URL的一部分
         const encodedUrl = originalUrl; //encodeURIComponent(originalUrl);
 
@@ -44,16 +44,22 @@ export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[
             });
     }
 
-    let imageBlobs: (Blob | null)[] = [];
+    let imageBlobs: (Blob)[] = [];
 
     for (let i = 0; i < urls.length; i++) {
         const url = urls[i];
         imageBlobs.push(await downloadImagesViaProxy(url, userProxy as string));
     }
 
+    progressDialog.updateProgress(95, "Processing image data...");
+    const files = convertBlobsToFilesWithRandomNames(imageBlobs);
+    console.debug("Converted files:", files);
+
     progressDialog.updateProgress(100, "Done!");
     await new Promise(resolve => setTimeout(resolve, 500)); // 等待半秒以便用户看到完成状态
     progressDialog.close();
+
+    await uploadFiles('', files)
 
     console.debug("SampleParser called with URLs:", urls);
     let res: string[] = [];
@@ -63,17 +69,37 @@ export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[
     return res;
 }
 
-function blobsToFiles(blobs: Blob[]) {
-    return blobs.map((blob, index) => {
-        // 为当前 Blob 创建一个文件名
-        const filename = `asset-${index}`; // 如果没提供文件名，就用一个默认的
+function convertBlobsToFilesWithRandomNames(blobs: Blob[], fallbackExt = '.bin') {
+    // 1. 定义一个从 MIME 类型到文件扩展名的映射表
+    //    您可以根据自己的需求自由增删。
+    const MIME_TYPE_MAP: { [key: string]: string } = {
+        'image/jpeg': '.jpg',
+        'image/png': '.png',
+        'image/gif': '.gif',
+        'image/webp': '.webp',
+        'image/svg+xml': '.svg',
+        'application/pdf': '.pdf',
+        'text/plain': '.txt',
+        'text/html': '.html',
+        'application/json': '.json',
+        // ... 添加更多你可能需要的类型
+    };
 
-        // 使用 File 构造函数创建新的 File 对象
-        return new File(
-            [blob],         // 文件内容
-            filename,       // 文件名
-            { type: blob.type } // 文件类型，从原始 Blob 继承
-        );
+    // 2. 使用 Array.prototype.map 遍历并转换每个 Blob
+    return blobs.map(blob => {
+        // a. 从 Blob 的 .type 属性推断文件扩展名
+        const extension = MIME_TYPE_MAP[blob.type] || fallbackExt;
+
+        // b. 使用 crypto.randomUUID() 生成一个高度唯一的字符串作为主文件名
+        const randomName = crypto.randomUUID();
+
+        // c. 组合成完整的文件名
+        const filename = `${randomName}${extension}`;
+
+        // d. 使用 File 构造函数创建新的 File 对象
+        //    - 第一个参数是包含 Blob 内容的数组: [blob]
+        //    - 第二个参数是新的文件名
+        //    - 第三个参数是选项，我们在这里保留原始的 MIME 类型
+        return new File([blob], filename, { type: blob.type });
     });
 }
-
