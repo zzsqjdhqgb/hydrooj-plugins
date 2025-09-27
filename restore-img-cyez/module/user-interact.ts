@@ -2,13 +2,20 @@ import { ActionDialog, Dialog, InfoDialog } from '@hydrooj/ui-default/components
 import { $ } from '@hydrooj/ui-default';
 import { tpl } from '@hydrooj/ui-default/utils';
 
+// 用于在 localStorage 中存储代理 URL。
+const PROXY_STORAGE_KEY = 'user-last-used-proxy-url';
+
 /**
  * 弹出一个对话框，让用户输入代理 URL。
+ * 自动记住用户上一次的输入，并在下次打开时作为默认值填充。
  * @returns {Promise<string>} 如果用户确认，则返回输入的 URL；如果用户取消，则 Promise 会被拒绝。
  */
 export async function getProxyUrl(): Promise<string> {
+    // 2. 在创建对话框之前，尝试从 localStorage 中读取上次保存的值。
+    //    如果找不到（例如第一次使用），则默认为一个空字符串。
+    const lastUsedProxy = localStorage.getItem(PROXY_STORAGE_KEY) || '';
+
     const dialog = new ActionDialog({
-        // 使用模板字符串构建更清晰的 HTML 结构
         $body: tpl`
             <div class="typo">
                 <label for="proxyUrlInput">Proxy:</label>
@@ -20,6 +27,8 @@ export async function getProxyUrl(): Promise<string> {
                         class="textbox"
                         placeholder="https://proxy.example.com/<url>"
                         data-autofocus
+                        autocomplete="url"
+                        value="${lastUsedProxy}"
                     />
                 </div>
                 <div class="proxy-error-message" style="color: red; display: none;">
@@ -27,39 +36,39 @@ export async function getProxyUrl(): Promise<string> {
                 </div>
             </div>
         `,
-        // onDispatch 钩子用于在对话框按钮被点击时进行处理
         onDispatch(action) {
-            // 我们只关心确认操作
             if (action !== 'ok') {
-                return true; // 允许关闭对话框
+                return true; // 允许关闭
             }
 
-            // 在分发事件时进行验证
             const $input = dialog.$dom.find('[name="proxyUrl"]');
             const $error = dialog.$dom.find('.proxy-error-message');
             const url = $input.val()?.toString().trim() || '';
 
             if (!url) {
-                $error.show(); // 显示错误信息
-                $input.focus(); // 让输入框重新获得焦点
-                return false; // 返回 false 来阻止对话框关闭
+                $error.show();
+                $input.focus();
+                return false; // 阻止关闭
             }
 
-            $error.hide(); // 如果验证通过，隐藏错误信息
-            return true; // 允许关闭对话框
+            $error.hide();
+            return true;
         }
     });
 
-    // 打开对话框并等待用户操作
+    // 等待用户操作 (点击 "OK" 或 "Cancel")
     const action = await dialog.open();
 
-    // 根据用户的操作决定是返回URL还是抛出错误
     if (action === 'ok') {
-        // 从对话框的 DOM 中获取最终的输入值
-        const finalUrl = dialog.$dom.find('[name="proxyUrl"]').val() as string;
-        return finalUrl.trim();
+        const userInput = (dialog.$dom.find('[name="proxyUrl"]').val() as string).trim();
+        
+        // 4. 当用户成功确认输入后，将新的值保存到 localStorage 中，以备下次使用。
+        localStorage.setItem(PROXY_STORAGE_KEY, userInput);
+
+        // 返回用户输入的值
+        return userInput;
     } else {
-        // 如果用户取消，则拒绝 Promise，让调用方可以捕获这个行为
+        // 如果用户取消，则拒绝 Promise
         return Promise.reject('User cancelled the proxy input dialog.');
     }
 }
