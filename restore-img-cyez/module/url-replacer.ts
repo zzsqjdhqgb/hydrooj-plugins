@@ -2,11 +2,10 @@ import { UrlReplacer } from "./parser";
 import { getProxyUrl, createDownloadProcess, showError } from "./user-interact";
 import { uploadFiles } from "@hydrooj/ui-default";
 
-// 声明 UserContext 的类型，避免隐式 any 和全局变量的直接使用。
-// 实际项目中，这应该从一个类型定义文件中导入。
+// 假设的全局 UserContext 类型定义
 declare const UserContext: { _id: string };
 
-// --- 步骤 1: 将页面相关的逻辑提取并集中管理 ---
+// --- 实用工具函数 ---
 
 const PAGE_TYPES = {
     PROBLEM_CREATE: 'problem_create',
@@ -14,10 +13,46 @@ const PAGE_TYPES = {
 };
 
 /**
+ * 决定一个 URL 是否应该被跳过，不进行转存。
+ * @param {string} url - 要检查的 URL。
+ * @returns {boolean} 如果为 true，则跳过该 URL。
+ */
+function shouldSkipUrl(url: string): boolean {
+    // 规则 1: 跳过 Base64 Data URIs，因为它们会被专门处理，而不是跳过。
+    if (url.startsWith('data:')) {
+        return false;
+    }
+    // 规则 2: 跳过已经是指向站内文件的 URL (可以根据你的实际情况修改)
+    const currentHost = window.location.hostname;
+    try {
+        const parsedUrl = new URL(url);
+        if (parsedUrl.hostname === currentHost) {
+            // 如果 URL 指向当前站点，则跳过
+            return true;
+        }
+    } catch (e) {
+        // 无效的 URL，也跳过处理
+        return true;
+    }
+    // 默认不跳过
+    return false;
+}
+
+/**
+ * 将 Base64 Data URI 字符串转换为 Blob 对象。
+ * @param {string} dataUri - `data:` 开头的 URI 字符串。
+ * @returns {Promise<Blob>} 转换后的 Blob 对象。
+ */
+async function dataUriToBlob(dataUri: string): Promise<Blob> {
+    const response = await fetch(dataUri);
+    return response.blob();
+}
+
+/**
  * 根据当前页面名称，生成与文件处理相关的配置。
- * @returns {object} 包含上传目标、参数和最终URL前缀的配置对象。
  */
 function getPageContextConfig() {
+    // ... (此函数无需改动)
     const pagename = document.documentElement.getAttribute('data-page') || '';
     const isProblemEdit = pagename === PAGE_TYPES.PROBLEM_EDIT;
     const isProblemPage = [PAGE_TYPES.PROBLEM_CREATE, PAGE_TYPES.PROBLEM_EDIT].includes(pagename);
@@ -26,20 +61,17 @@ function getPageContextConfig() {
         uploadUrl: isProblemEdit ? "./files" : "/file",
         uploadType: isProblemEdit ? "additional_file" : undefined,
         resultUrlPrefix: isProblemPage ? 'file://' : `/file/${UserContext._id}/`,
-        isProblemPage // 保留此标志位以便将来可能的其他逻辑
     };
 }
 
-// --- 步骤 2: 创建一个独立的、可复用的并行下载函数 ---
-
 /**
- * 并行下载所有提供的 URL，并通过回调报告进度。
- * @param {string[]} urls - 需要下载的 URL 列表。
- * @param {string} proxyTemplate - 代理 URL 模板，必须包含 "<url>" 占位符。
- * @param {(completed: number, total: number, url: string) => void} onProgress - 进度回调函数。
- * @returns {Promise<Blob[]>} 返回一个包含所有下载内容的 Blob 数组。
+ * [已升级] 并行获取所有 URL 的内容（通过代理下载或解码Base64）
+ * @param {string[]} urls - 需要处理的 URL 列表。
+ * @param {string} proxyTemplate - 代理 URL 模板。
+ * @param {(completed: number, total: number, url: string) => void} onProgress - 进度回调。
+ * @returns {Promise<Blob[]>} 返回包含所有内容的 Blob 数组。
  */
-async function downloadAllWithProgress(
+async function fetchAllUrlContents(
     urls: string[],
     proxyTemplate: string,
     onProgress: (completed: number, total: number, url: string) => void
@@ -47,46 +79,46 @@ async function downloadAllWithProgress(
     let completedCount = 0;
     const totalCount = urls.length;
 
-    const downloadPromises = urls.map(async (originalUrl) => {
-        const proxyUrl = proxyTemplate.replace("<url>", originalUrl);
-        
+    const contentPromises = urls.map(async (originalUrl) => {
         try {
-            const response = await fetch(proxyUrl);
-            if (!response.ok) {
-                throw new Error(`Network response error: ${response.status} for ${proxyUrl}`);
+            let blob: Blob;
+            if (originalUrl.startsWith('data:')) {
+                blob = await dataUriToBlob(originalUrl);
+            } else {
+                // 为了兼容可能无法解码的简单代理，我们暂时移除 encodeURIComponent。
+                // 如果代理服务器能处理编码后的URL，建议还是加上 `encodeURIComponent(originalUrl)` 以增加健壮性。
+                const proxyUrl = proxyTemplate.replace("<url>", originalUrl);
+                
+                // [CORS 关键点]
+                // 下面的 fetch 请求是一个跨域请求。
+                // 如果 `proxyUrl` 所在的服务器没有配置正确的 CORS 响应头
+                // (例如 Access-Control-Allow-Origin)，浏览器将在此处拦截请求并报错。
+                // 这个问题需要通过配置代理服务器来解决，而不是修改前端代码。
+                const response = await fetch(proxyUrl);
+
+                if (!response.ok) {
+                    throw new Error(`Network response error: ${response.status} for ${proxyUrl}`);
+                }
+                blob = await response.blob();
             }
-            const blob = await response.blob();
             
-            // 任务完成后报告进度
             completedCount++;
             onProgress(completedCount, totalCount, originalUrl);
-
             return blob;
         } catch (error) {
-            // 将错误包装，使其包含更多上下文信息
-            throw new Error(`Failed to download ${originalUrl} via proxy. Reason: ${error.message}`);
+            throw new Error(`Failed to process ${originalUrl}. Reason: ${error.message}`);
         }
     });
 
-    // 使用 Promise.all 等待所有下载任务完成
-    return Promise.all(downloadPromises);
+    return Promise.all(contentPromises);
 }
-
-// --- `convertBlobsToFilesWithRandomNames` 函数本身设计得很好，我们保留它并为其添加 JSDoc ---
 
 /**
  * 将 Blob 对象数组转换为带有随机名称的 File 对象数组。
- * @param {Blob[]} blobs - 需要转换的 Blob 数组。
- * @param {string} [fallbackExt=".bin"] - 当无法从 MIME 类型推断扩展名时的后备扩展名。
- * @returns {File[]} 转换后的 File 对象数组。
  */
 function convertBlobsToFilesWithRandomNames(blobs: Blob[], fallbackExt = ".bin"): File[] {
-    const MIME_TYPE_MAP: { [key: string]: string } = {
-        "image/jpeg": ".jpeg", "image/jpg": ".jpg", "image/png": ".png",
-        "image/gif": ".gif", "image/webp": ".webp", "image/bmp": ".bmp",
-        "image/svg+xml": ".svg", "application/pdf": ".pdf", "text/plain": ".txt",
-    };
-
+    // ... (此函数无需改动)
+    const MIME_TYPE_MAP: { [key: string]: string } = { "image/jpeg": ".jpeg", "image/jpg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp", "image/bmp": ".bmp", "image/svg+xml": ".svg", "application/pdf": ".pdf", "text/plain": ".txt" };
     return blobs.map((blob) => {
         const extension = MIME_TYPE_MAP[blob.type] || fallbackExt;
         const randomName = crypto.randomUUID();
@@ -95,65 +127,77 @@ function convertBlobsToFilesWithRandomNames(blobs: Blob[], fallbackExt = ".bin")
     });
 }
 
-// --- 步骤 3: 重构主函数，使其成为清晰的流程协调器 ---
+// --- 主流程协调器 ---
 
 export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[]> => {
-    // 将 progressDialog 的引用放在顶层，以便 finally 块可以访问
     let progressDialog: ReturnType<typeof createDownloadProcess> | null = null;
+    
+    // --- 步骤 1: 任务分类 ---
+    const jobsToProcess: { url: string, originalIndex: number }[] = [];
+    const resultUrls: string[] = new Array(urls.length);
 
-    try {
-        console.debug("MainReplacer started with URLs:", urls);
-
-        // 1. 获取配置
-        const config = getPageContextConfig();
-        console.debug("Page context config:", config);
-
-        let userProxy: string;
-        try {
-            // 2. 获取代理 URL
-            userProxy = await getProxyUrl();
-        } catch (error) {
-            // .1 如果用户取消，则不进行任何操作
-           throw new Error(`User canceled operation.`);
+    urls.forEach((url, index) => {
+        if (shouldSkipUrl(url)) {
+            // 对于要跳过的 URL，直接将其放入结果数组的正确位置
+            resultUrls[index] = url;
+        } else {
+            // 否则，将其加入待处理任务列表
+            jobsToProcess.push({ url, originalIndex: index });
         }
+    });
 
-        // 3. 初始化 UI
+    // 如果没有任何需要处理的 URL，直接返回
+    if (jobsToProcess.length === 0) {
+        console.log("No URLs to process. Returning original array.");
+        return resultUrls;
+    }
+
+    // --- 步骤 2: 获取用户输入（如果需要处理任务） ---
+    let userProxy: string;
+    try {
+        userProxy = await getProxyUrl();
+    } catch (rejectionReason) {
+        console.log("User canceled the proxy input dialog. Aborting.", rejectionReason);
+        return urls; // 用户取消，返回原始数组
+    }
+
+    // --- 步骤 3: 执行核心工作流 ---
+    try {
+        const config = getPageContextConfig();
         progressDialog = createDownloadProcess();
-        const total = urls.length;
+        
+        const urlsToProcess = jobsToProcess.map(job => job.url);
+        const total = urlsToProcess.length;
 
-        // 4. 执行核心逻辑：并行下载
-        progressDialog.updateProgress(0, `Starting download of ${total} files...`);
-        const imageBlobs = await downloadAllWithProgress(urls, userProxy, (completed, total, url) => {
+        // 3.1. 获取内容 (下载或解码)
+        progressDialog.updateProgress(0, `Starting processing of ${total} items...`);
+        const blobs = await fetchAllUrlContents(urlsToProcess, userProxy, (completed, total, url) => {
             const percent = (completed / total) * 100;
-            progressDialog?.updateProgress(percent, `Downloaded ${completed}/${total}: ${url.substring(0, 50)}...`);
+            progressDialog?.updateProgress(percent, `Processed ${completed}/${total}: ${url.substring(0, 50)}...`);
         });
 
-        // 5. 数据处理
-        progressDialog.updateProgress(95, "Processing downloaded data...");
-        const files = convertBlobsToFilesWithRandomNames(imageBlobs);
-        console.debug("Converted blobs to files:", files);
-
-        // 6. 上传文件
-        progressDialog.updateProgress(98, "Uploading files to server...");
+        // 3.2. 数据处理与上传
+        progressDialog.updateProgress(95, "Converting data and uploading...");
+        const files = convertBlobsToFilesWithRandomNames(blobs);
         await uploadFiles(config.uploadUrl, files, { type: config.uploadType });
 
-        // 7. 构建最终结果
-        const resultUrls = files.map(file => `${config.resultUrlPrefix}${file.name}`);
+        // 3.3. 将新生成的 URL 插入结果数组的正确位置
+        files.forEach((file, i) => {
+            const job = jobsToProcess[i];
+            const newUrl = `${config.resultUrlPrefix}${file.name}`;
+            resultUrls[job.originalIndex] = newUrl;
+        });
         
-        // 8. 完成并给予用户反馈
         progressDialog.updateProgress(100, "Done!");
-        await new Promise((resolve) => setTimeout(resolve, 500)); // 短暂显示完成状态
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
-        return resultUrls;
+        return resultUrls; // 成功！
 
     } catch (error) {
-        // 统一的错误处理
-        console.error("An error occurred in MainReplacer:", error);
+        console.error("An error occurred in MainReplacer's workflow:", error);
         await showError(error instanceof Error ? error.message : "An unknown error occurred.");
-        // 向上抛出异常或返回空数组，取决于调用方的期望
-        return urls;
+        return urls; // 发生错误，返回原始数组
     } finally {
-        // 确保无论成功还是失败，对话框都会被关闭
         progressDialog?.close();
     }
 };
