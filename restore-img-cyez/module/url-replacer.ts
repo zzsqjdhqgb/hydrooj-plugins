@@ -13,7 +13,6 @@ const PAGE_TYPES = {
     PROBLEM_EDIT: 'problem_edit',
 };
 
-// 提取为常量，避免在函数内重复获取
 const CURRENT_HOST = window.location.hostname;
 
 /**
