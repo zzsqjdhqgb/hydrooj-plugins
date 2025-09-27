@@ -1,8 +1,17 @@
 import { UrlReplacer } from "./parser";
 import { getProxyUrl, createDownloadProcess, showError } from "./user-interact";
-import { uploadFiles }   from '@hydrooj/ui-default';
+import { uploadFiles } from "@hydrooj/ui-default";
 
-export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[]> => {
+export const MainReplacer: UrlReplacer = async (
+    urls: string[]
+): Promise<string[]> => {
+    console.debug("SampleParser called with URLs:", urls);
+
+    const pagename = document.documentElement.getAttribute('data-page');
+    console.debug("Current page:", pagename);
+    const isProblemPage = ['problem_create', 'problem_edit'].includes(pagename ?? "");
+    const isProblemEdit = pagename === 'problem_edit';
+
     let userProxy: string | null = null;
     userProxy = await getProxyUrl();
 
@@ -10,41 +19,46 @@ export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[
     let current_percent = 0;
     const total = urls.length;
 
-    function downloadImagesViaProxy(originalUrl: string, proxyUrlTemplate: string): Promise<Blob> {
+    function downloadImagesViaProxy(
+        originalUrl: string,
+        proxyUrlTemplate: string
+    ): Promise<Blob> {
         // 2. 对原始URL进行编码，以安全地将其作为另一URL的一部分
         const encodedUrl = originalUrl; //encodeURIComponent(originalUrl);
 
         // 3. 将编码后的URL插入到代理模板中，创建最终的请求URL
-        const proxyUrl = proxyUrlTemplate.replace('<url>', encodedUrl);
+        const proxyUrl = proxyUrlTemplate.replace("<url>", encodedUrl);
 
         progressDialog.updateProgress(
-            current_percent / total * 100,
+            (current_percent / total) * 100,
             "GET: " + proxyUrl
         );
 
         // 4. 使用 fetch 发起请求
         return fetch(proxyUrl)
-            .then(response => {
+            .then((response) => {
                 // 检查请求是否成功
                 if (!response.ok) {
-                    throw new Error(`网络响应错误: ${response.status} ${response.statusText} for URL: ${proxyUrl}`);
+                    throw new Error(
+                        `网络响应错误: ${response.status} ${response.statusText} for URL: ${proxyUrl}`
+                    );
                 }
                 current_percent++;
                 progressDialog.updateProgress(
-                    current_percent / total * 100,
+                    (current_percent / total) * 100,
                     "Success: " + proxyUrl
                 );
                 // 5. 将响应体转换为 Blob 对象
                 return response.blob();
             })
-            .catch(async error => {
+            .catch(async (error) => {
                 await showError(`${error.message}`);
                 progressDialog.close();
                 throw error;
             });
     }
 
-    let imageBlobs: (Blob)[] = [];
+    let imageBlobs: Blob[] = [];
 
     for (let i = 0; i < urls.length; i++) {
         const url = urls[i];
@@ -56,37 +70,45 @@ export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[
     console.debug("Converted files:", files);
 
     progressDialog.updateProgress(100, "Done!");
-    await new Promise(resolve => setTimeout(resolve, 500)); // 等待半秒以便用户看到完成状态
+    await new Promise((resolve) => setTimeout(resolve, 500)); // 等待半秒以便用户看到完成状态
     progressDialog.close();
 
-    await uploadFiles('/file', files)
-
-    console.debug("SampleParser called with URLs:", urls);
     let res: string[] = [];
-    urls.forEach(url => {
-        res.push("BEGIN: " + url + " :END");
-    });
-    return res;
-}
 
-function convertBlobsToFilesWithRandomNames(blobs: Blob[], fallbackExt = '.bin') {
+    await uploadFiles(isProblemEdit ? "./files" : "/file", files, {
+        type: isProblemEdit ? "additional_file" : undefined,
+    });
+    
+    for (let i = 0; i < files.length; i++) {
+        res.push(`${isProblemPage ? 'file://' : `/file/${UserContext._id}/`}${files[i].name}`);
+    }
+    
+    return res;
+};
+
+function convertBlobsToFilesWithRandomNames(
+    blobs: Blob[],
+    fallbackExt = ".bin"
+) {
     // 1. 定义一个从 MIME 类型到文件扩展名的映射表
     //    您可以根据自己的需求自由增删。
     const MIME_TYPE_MAP: { [key: string]: string } = {
-        'image/jpeg': '.jpg',
-        'image/png': '.png',
-        'image/gif': '.gif',
-        'image/webp': '.webp',
-        'image/svg+xml': '.svg',
-        'application/pdf': '.pdf',
-        'text/plain': '.txt',
-        'text/html': '.html',
-        'application/json': '.json',
+        "image/jpeg": ".jpeg",
+        "image/jpg": ".jpg",
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+        "image/bmp": ".bmp",
+        "image/svg+xml": ".svg",
+        "application/pdf": ".pdf",
+        "text/plain": ".txt",
+        "text/html": ".html",
+        "application/json": ".json",
         // ... 添加更多你可能需要的类型
     };
 
     // 2. 使用 Array.prototype.map 遍历并转换每个 Blob
-    return blobs.map(blob => {
+    return blobs.map((blob) => {
         // a. 从 Blob 的 .type 属性推断文件扩展名
         const extension = MIME_TYPE_MAP[blob.type] || fallbackExt;
 
