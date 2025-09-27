@@ -59,7 +59,6 @@ export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[
     await new Promise(resolve => setTimeout(resolve, 500)); // 等待半秒以便用户看到完成状态
     progressDialog.close();
 
-    // here strange error occurs
     await uploadFiles('/file', files)
 
     console.debug("SampleParser called with URLs:", urls);
