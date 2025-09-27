@@ -1,6 +1,7 @@
 import { UrlReplacer } from "./parser";
-import { getProxyUrl, createDownloadProcess, showError } from "./user-interact";
+import { getProxyUrl, createDownloadProcess } from "./user-interact";
 import { uploadFiles } from "@hydrooj/ui-default";
+import { Notification } from '@hydrooj/ui-default/components/dialog';
 
 // 假设的全局 UserContext 类型定义
 declare const UserContext: { _id: string };
@@ -12,32 +13,42 @@ const PAGE_TYPES = {
     PROBLEM_EDIT: 'problem_edit',
 };
 
+// 提取为常量，避免在函数内重复获取
+const CURRENT_HOST = window.location.hostname;
+
 /**
  * 决定一个 URL 是否应该被跳过，不进行转存。
  * @param {string} url - 要检查的 URL。
  * @returns {boolean} 如果为 true，则跳过该 URL。
  */
 function shouldSkipUrl(url: string): boolean {
-    // 规则 1: 跳过 Base64 Data URIs，因为它们会被专门处理，而不是跳过。
+    // 规则 1: 永远不要跳过 `data:` URIs，它们需要被特殊处理。
     if (url.startsWith('data:')) {
         return false;
     }
-    // 规则 2: 跳过已经是指向站内文件的 URL (可以根据你的实际情况修改)
-    const currentHost = window.location.hostname;
+
+    // --- 从这里开始，都是“跳过”的规则 ---
+
+    // 规则 2: 跳过 `file://` URIs。
+    if (url.startsWith('file://')) {
+        return true;
+    }
+
+    // 规则 3: 跳过无效的 URL 或已经指向本站的 URL。
     try {
         const parsedUrl = new URL(url);
-        if (parsedUrl.hostname === currentHost) {
-            // 如果 URL 指向当前站点，则跳过
+        // 如果 URL 指向当前站点，则跳过
+        if (parsedUrl.hostname === CURRENT_HOST) {
             return true;
         }
     } catch (e) {
-        // 无效的 URL，也跳过处理
+        // 如果 new URL() 解析失败，说明它不是一个有效的、可处理的 URL，跳过。
         return true;
     }
-    // 默认不跳过
+
+    // 默认行为：如果以上所有跳过规则都未命中，则不跳过。
     return false;
 }
-
 /**
  * 将 Base64 Data URI 字符串转换为 Blob 对象。
  * @param {string} dataUri - `data:` 开头的 URI 字符串。
@@ -52,7 +63,6 @@ async function dataUriToBlob(dataUri: string): Promise<Blob> {
  * 根据当前页面名称，生成与文件处理相关的配置。
  */
 function getPageContextConfig() {
-    // ... (此函数无需改动)
     const pagename = document.documentElement.getAttribute('data-page') || '';
     const isProblemEdit = pagename === PAGE_TYPES.PROBLEM_EDIT;
     const isProblemPage = [PAGE_TYPES.PROBLEM_CREATE, PAGE_TYPES.PROBLEM_EDIT].includes(pagename);
@@ -65,7 +75,7 @@ function getPageContextConfig() {
 }
 
 /**
- * [已升级] 并行获取所有 URL 的内容（通过代理下载或解码Base64）
+ * 并行获取所有 URL 的内容（通过代理下载或解码Base64）
  * @param {string[]} urls - 需要处理的 URL 列表。
  * @param {string} proxyTemplate - 代理 URL 模板。
  * @param {(completed: number, total: number, url: string) => void} onProgress - 进度回调。
@@ -117,11 +127,10 @@ async function fetchAllUrlContents(
  * 将 Blob 对象数组转换为带有随机名称的 File 对象数组。
  */
 function convertBlobsToFilesWithRandomNames(blobs: Blob[], fallbackExt = ".bin"): File[] {
-    // ... (此函数无需改动)
     const MIME_TYPE_MAP: { [key: string]: string } = { "image/jpeg": ".jpeg", "image/jpg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp", "image/bmp": ".bmp", "image/svg+xml": ".svg", "application/pdf": ".pdf", "text/plain": ".txt" };
     return blobs.map((blob) => {
         const extension = MIME_TYPE_MAP[blob.type] || fallbackExt;
-        const randomName = crypto.randomUUID();
+        const randomName = "MD-ASSET-" + crypto.randomUUID();
         const filename = `${randomName}${extension}`;
         return new File([blob], filename, { type: blob.type });
     });
@@ -148,7 +157,7 @@ export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[
 
     // 如果没有任何需要处理的 URL，直接返回
     if (jobsToProcess.length === 0) {
-        console.log("No URLs to process. Returning original array.");
+        Notification.info("No URLs to process.");
         return resultUrls;
     }
 
@@ -157,7 +166,7 @@ export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[
     try {
         userProxy = await getProxyUrl();
     } catch (rejectionReason) {
-        console.log("User canceled the proxy input dialog. Aborting.", rejectionReason);
+        Notification.info("User canceled.");
         return urls; // 用户取消，返回原始数组
     }
 
@@ -195,7 +204,7 @@ export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[
 
     } catch (error) {
         console.error("An error occurred in MainReplacer's workflow:", error);
-        await showError(error instanceof Error ? error.message : "An unknown error occurred.");
+        await Notification.error(error instanceof Error ? error.message : "An unknown error occurred.");
         return urls; // 发生错误，返回原始数组
     } finally {
         progressDialog?.close();

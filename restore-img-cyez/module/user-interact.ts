@@ -1,4 +1,4 @@
-import { ActionDialog, Dialog, InfoDialog, Notification } from '@hydrooj/ui-default/components/dialog';
+import { ActionDialog, Dialog, InfoDialog } from '@hydrooj/ui-default/components/dialog';
 import { $ } from '@hydrooj/ui-default';
 import { tpl } from '@hydrooj/ui-default/utils';
 
@@ -69,8 +69,10 @@ export async function getProxyUrl(): Promise<string> {
  * @param {string} message - 需要显示的信息内容。
  * @returns {Promise<void>} 对话框关闭后 resolve。
  */
-export async function showError(message: string): Promise<void> {
-    Notification.warn(message);
+export async function showInfo(message: string): Promise<void> {
+    await new InfoDialog({
+        $body: tpl.typoMsg(message)
+    }).open();
 }
 
 /**
