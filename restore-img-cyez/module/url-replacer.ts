@@ -1,6 +1,6 @@
 import { UrlReplacer } from "./parser";
 import { getProxyUrl, createDownloadProcess, showError } from "./user-interact";
-import uploadFiles from '@hydrooj/ui-default';
+import { uploadFiles }   from '@hydrooj/ui-default';
 
 export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[]> => {
     let userProxy: string | null = null;
@@ -59,9 +59,8 @@ export const MainReplacer: UrlReplacer = async (urls: string[]): Promise<string[
     await new Promise(resolve => setTimeout(resolve, 500)); // 等待半秒以便用户看到完成状态
     progressDialog.close();
 
-    console.log(uploadFiles);
     // here strange error occurs
-    await window.HydroExports.uploadFiles('/file', files)
+    await uploadFiles('/file', files)
 
     console.debug("SampleParser called with URLs:", urls);
     let res: string[] = [];
