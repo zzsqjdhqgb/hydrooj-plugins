@@ -2,6 +2,8 @@ import { UrlReplacer } from "./parser";
 import { getProxyUrl, createDownloadProcess } from "./user-interact";
 import { uploadFiles } from "@hydrooj/ui-default";
 import { Notification } from '@hydrooj/ui-default/components/dialog';
+// +++ 新增引入 nanoid +++
+import { nanoid } from 'nanoid';
 
 // 假设的全局 UserContext 类型定义
 declare const UserContext: { _id: string };
@@ -48,6 +50,7 @@ function shouldSkipUrl(url: string): boolean {
     // 默认行为：如果以上所有跳过规则都未命中，则不跳过。
     return false;
 }
+
 /**
  * 将 Base64 Data URI 字符串转换为 Blob 对象。
  * @param {string} dataUri - `data:` 开头的 URI 字符串。
@@ -123,13 +126,30 @@ async function fetchAllUrlContents(
 }
 
 /**
+ * 生成一个对用户友好的、简短的、基于时间的唯一ID。
+ * 格式: [base36时间戳]-[4位随机字符]
+ * @returns {string} 例如: "l6i42ixo-b3k4"
+ */
+function generateId(): string {
+  // 1. 获取当前时间的毫秒数，并将其转换为 Base36 编码。
+  // Base36 (0-9, a-z) 是一种非常紧凑的方式来表示数字。
+  const timestampPart = Date.now().toString(36);
+
+  // 2. 生成一小段随机字符串，用于防止同一毫秒内的冲突。
+  const randomPart = nanoid(4);
+
+  return `${timestampPart}-${randomPart}`;
+}
+
+
+/**
  * 将 Blob 对象数组转换为带有随机名称的 File 对象数组。
  */
 function convertBlobsToFilesWithRandomNames(blobs: Blob[], fallbackExt = ".bin"): File[] {
     const MIME_TYPE_MAP: { [key: string]: string } = { "image/jpeg": ".jpeg", "image/jpg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp", "image/bmp": ".bmp", "image/svg+xml": ".svg", "application/pdf": ".pdf", "text/plain": ".txt" };
     return blobs.map((blob) => {
         const extension = MIME_TYPE_MAP[blob.type] || fallbackExt;
-        const randomName = "MD-ASSET-" + crypto.randomUUID();
+        const randomName = "MD-ASSET-" + generateId();
         const filename = `${randomName}${extension}`;
         return new File([blob], filename, { type: blob.type });
     });
